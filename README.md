@@ -4,7 +4,7 @@
 <p align="center">
 <img src="docs/images/lab_preview.png" width="800">
 </p>
-
+<p>https://ar-digital-electronics-laboratory-e.vercel.app/</p>
 ---
 
 ## 📌 Project Overview

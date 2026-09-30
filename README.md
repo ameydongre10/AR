@@ -113,117 +113,131 @@ Implementation:
 
 # Software Requirements
 
-- Unity 6
-- AR Foundation
-- ARCore (Android)
-- Visual Studio
-- C#
-- Blender (for custom models)
+- Unity `6000.4.3f1`
+- AR Foundation `1.0.2` (ARCore `6.2.0` on Android)
+- Input System `1.14.2`, URP `17.4.0`
+- Android device with ARCore support, API 25 or newer, for device testing
+- No external art tools: all geometry and UI are generated at runtime from code
 
 ---
 
 # Project Architecture
 
 ```
-Project
-│
+AR
 ├── Assets
-│   ├── Models
-│   ├── Materials
-│   ├── Prefabs
+│   ├── Editor
+│   │   ├── ARLab.Editor.asmdef
+│   │   └── LabSceneBuilder.cs        ← scene + Android + ARCore loader tooling
 │   ├── Scenes
+│   │   └── Main.unity                ← one GameManager, everything else at runtime
 │   ├── Scripts
-│   ├── UI
-│   ├── Animations
-│   ├── Textures
-│   └── Audio
-│
+│   │   ├── ARLab.Runtime.asmdef
+│   │   ├── AR/                       ← session, raycast, planes, placement, touch
+│   │   ├── Core/                     ← GameManager, state machine, event bus, events
+│   │   ├── Electronics/              ← logic value, netlist, pins, TTL parts
+│   │   ├── Laboratory/               ← breadboard, factory, materials, lab manager
+│   │   ├── Simulation/               ← solver, expression parser, truth table, validator
+│   │   └── UI/                       ← HUD, tutorial
+│   ├── Tests
+│   │   └── EditMode/                 ← NUnit suites (no PlayMode tests yet)
+│   └── XR/                           ← XR Plug-in Management settings (ARCore loader)
 ├── Packages
-│
 ├── ProjectSettings
-│
 └── README.md
 ```
+
+Pinned in `Packages/manifest.json`: Unity `6000.4.3f1`, AR Foundation `1.0.2`, Input System
+`1.14.2`, URP `17.4.0`, ARCore `6.2.0`, XR Plug-in Management `4.5.3`.
+
+---
+
+# Setup
+
+```bash
+git clone https://github.com/ameydongre10/AR.git
+```
+
+1. Open with **Unity 6000.4.3f1** and let it resolve packages.
+2. Run **AR Lab → Configure ARCore Loader** (creates the per-build-target XR settings and
+   assigns the ARCore loader; without it the app builds but no session ever starts).
+3. Run **AR Lab → Configure Android Player Settings** (ARM64, IL2CPP, min API 25, Vulkan with
+   an OpenGLES3 fallback).
+4. Run **AR Lab → Rebuild Main Scene** and **AR Lab → Set As Startup Scene**.
+5. Press Play. With no XR loader active in the editor the app runs in simulated mode and the
+   **Place** button puts the bench in front of the camera, so the whole experiment is reachable
+   without a headset.
+
+Tests, headless:
+
+```bash
+Unity -batchmode -nographics -projectPath . \
+  -runTests -testPlatform EditMode \
+  -testResults results.xml -logFile run.log
+```
+
+Current state: **95 EditMode tests, all passing.**
 
 ---
 
 # Unity Scene Structure
 
+`Assets/Scenes/Main.unity` contains a single GameObject holding one `GameManager`. Everything
+else — the XR rig, the bench, the HUD, the tutorial — is assembled at runtime by that same
+component, so there is no hand-wired scene to drift out of sync with the code.
+
+```text
+Main.unity
+└── ARLab                      ← GameManager, the only authored object
+    ├── ARSession              ← ARSession, ARPlaneManager, ARRaycastManager,
+    │                             ARSessionController, ArPlaneVisualizer, ARRaycastController
+    ├── Origin                 ← XROrigin
+    │   └── AR Camera          ← Camera, AudioListener, ARCameraManager
+    ├── LabRoot                ← inactive until the rig is placed
+    │   ├── ComponentAnchor    ← spawn parent for library parts
+    │   ├── Breadboard         ← Breadboard (deck + picking collider, built in code)
+    │   └── PowerSupply        ← procedural PSU with TextMesh readout
+    ├── Laboratory             ← LaboratoryManager
+    ├── ARPlacement            ← ARPlacementManager
+    ├── ARInteraction          ← ArInteractionManager
+    ├── Tutorial               ← TutorialController
+    ├── HudCanvas              ← LabHud (canvas, panels, buttons; also built in code)
+    └── EventSystem            ← EventSystem + InputSystemUIInputModule
 ```
-Main Scene
 
-AR Session
-
-AR Session Origin
-
-AR Camera
-
-Plane Manager
-
-Raycast Manager
-
-Lighting
-
-Directional Light
-
-Canvas
-
-AR Laboratory
-
-Breadboard
-
-Power Supply
-
-IC7404
-
-IC7408
-
-IC7432
-
-Hookup Wires
-
-Patch Cords
-
-Tutorial Panel
-
-Simulation Manager
-```
+Regenerate the scene with **AR Lab → Rebuild Main Scene**. The same code path runs in play mode
+and in the EditMode test suite (`Assets/Tests/EditMode/SceneAssemblyTests.cs`), so a wiring
+mistake fails a test rather than showing up only on a device.
 
 ---
 
 # Scripts
 
-```
-Scripts
+`Assets/Scripts/ARLab.Runtime.asmdef` holds the runtime code in six namespaces:
 
-ARPlacementManager.cs
+| Namespace | Files | Responsibility |
+|---|---|---|
+| `ARLab.Core` | 4 | `GameManager`, `ArStateMachine`, `EventBus`, `GameEvents` |
+| `ARLab.Electronics` | 11 | `LogicValue`, `ConnectionGraph`, pins, TTL parts, `IcComponent`, `LogicGate` |
+| `ARLab.Laboratory` | 5 | `Breadboard`, `BreadboardGrid`, `ComponentFactory`, `LabMaterials`, `LaboratoryManager` |
+| `ARLab.Simulation` | 4 | `DigitalLogicSimulator`, `BooleanExpression`, `TruthTableEvaluator`, `ExperimentValidator` |
+| `ARLab.AR` | 5 | session boot, raycasts, plane visualizer, placement, touch routing |
+| `ARLab.UI` | 2 | `LabHud`, `TutorialController` |
 
-ObjectManipulator.cs
+Notable design points:
 
-BreadboardManager.cs
-
-PowerSupply.cs
-
-WireManager.cs
-
-WireRenderer.cs
-
-SnapManager.cs
-
-DigitalLogicSimulator.cs
-
-IC7404.cs
-
-IC7408.cs
-
-IC7432.cs
-
-SimulationManager.cs
-
-TutorialManager.cs
-
-UIManager.cs
-```
+- **Three-valued logic.** `LogicValue` is `Low`/`High`/`Undefined`; there is no `bool` anywhere
+  in the solver, so a floating input cannot silently read as `false`.
+- **Solver, not formula.** `DigitalLogicSimulator` runs the real netlist to a fixpoint and
+  reports contention, floating nets and oscillation. `ExperimentValidator` checks structure, and
+  the truth table comes from `TruthTableEvaluator` simulating each input combination — nothing
+  is compared against a hard-coded expected result.
+- **Authoritative graph.** `ConnectionGraph` uses union-find over terminals; breadboard sockets
+  and rails are pre-tied at construction, so wiring a rail is a topology fact rather than a rule.
+- **Geometry from code.** `ComponentFactory` and `LabHud.BuildRuntimeUi` build meshes, materials
+  and the entire panel set procedurally, so the repository carries no binary art.
+- **One EventBus.** Systems publish domain events; the HUD and tutorial subscribe. No system
+  holds a reference to another except the managers wired in `GameManager.BuildIfNeeded`.
 
 ---
 
@@ -231,65 +245,57 @@ UIManager.cs
 
 ## Augmented Reality
 
-✔ Plane Detection
+✔ Horizontal plane detection, with a procedurally generated overlay
 
-✔ Plane Tracking
+✔ Real AR raycast placement, plus an editor/simulated fallback
 
-✔ Tap to Place Lab
+✔ Tap to place the rig
 
-✔ Pinch to Scale
+✔ Drag, pinch to scale, twist to rotate, with scale and tilt clamped
 
-✔ Rotate Laboratory
-
-✔ Drag Laboratory
+✔ `ArStateMachine` gate: illegal actions are rejected, not silently ignored
 
 ---
 
 ## Interaction
 
-✔ Pick Objects
+✔ Pick parts by collider
 
-✔ Move Components
+✔ Move, rotate and scale the placed rig
 
-✔ Rotate Components
+✔ Snap parts into breadboard sockets and DIP positions
 
-✔ Snap to Breadboard
+✔ Select, delete and reset
 
-✔ Remove Components
-
-✔ Auto Alignment
+✔ Two-finger gesture identity is tracked, so a finger lift cannot strand a gesture
 
 ---
 
 ## Breadboard Simulation
 
-- Interactive breadboard holes
-- Intelligent snapping
-- Automatic wiring
-- Correct rail connections
-- Collision detection
+- 63-column board, rows A–J, plus power rails
+- Socket picking and snapping to a real hole
+- Split-rail option, with the two halves correctly isolated
+- Rail connectivity comes from the netlist topology, not from proximity rules
 
 ---
 
 ## Wire System
 
-- Dynamic wire generation
-- Automatic routing
-- Curved wire rendering
-- Multiple colors
-- Delete wire functionality
+- Two-tap wiring: tap a pin, then tap a target
+- Preview wire follows the cursor before committing
+- Two outputs on one net are rejected as a contention
+- Cancel and delete are always available
 
 ---
 
 ## Logic Simulation
 
-Supports
+Three-valued, fixpoint-based, netlist-driven:
 
-- NOT Gate
-- AND Gate
-- OR Gate
-
-Real-time logic propagation.
+- `7404` (hex inverter), `7408` (quad AND), `7432` (quad OR), each gate addressed independently
+- Reports floating nets, output contention and combinational oscillation
+- Evaluates against the real netlist, so a miswired board fails the check
 
 ---
 
@@ -307,13 +313,18 @@ Features
 
 ## Output Indicators
 
-Green LED
+- `LedIndicator`: green for HIGH, red for LOW, dark for `Undefined`
+- `LogicProbe`: reads any net and shows HIGH/LOW/– on a TextMesh
+- `PowerSupply`: +5V/GND posts with a live TextMesh voltage readout
 
-Logic HIGH
+---
 
-Red LED
+## Guidance and Verification
 
-Logic LOW
+- `TutorialController` advances on predicates over the live bench, not a timer
+- `ExperimentValidator` reports per-check pass/warn/fail with reasons
+- `TruthTableEvaluator` simulates every input combination and renders the table
+- `LabHud` builds its whole panel set in code, so there is no unwired canvas
 
 ---
 
@@ -423,19 +434,16 @@ Verify truth table.
 
 # Experimental Results
 
-The developed AR laboratory successfully simulated the implementation of Boolean functions using TTL logic gates.
+Simulation and validation are automated. `DigitalLogicSimulatorTests` builds circuits on a real
+breadboard topology and asserts against the netlist, covering: inverter and two-input gate truth
+tables, series inversion for SOP/POS, LED and probe output, split-rail isolation, floating nets,
+output contention, and a complete XOR experiment validated end to end.
 
-Students were able to:
+`SceneAssemblyTests` assembles the runtime graph from an empty scene and asserts that every
+manager, panel, collider and button exists and is wired, which is what previously only surfaced
+on a physical device.
 
-- Place virtual components accurately.
-- Connect the circuit correctly.
-- Observe logic propagation.
-- Verify SOP implementation.
-- Verify POS implementation.
-- Compare theoretical and practical outputs.
-- Perform experiments without physical hardware.
-
-The results matched the expected truth table for all tested input combinations.
+No hardware or device run has been performed, so no on-device results are claimed here.
 
 ---
 
@@ -469,6 +477,8 @@ The results matched the expected truth table for all tested input combinations.
 
 # Screenshots
 
+Referenced in this README but not yet present in the repository:
+
 ```
 docs/images/
 
@@ -489,7 +499,12 @@ output_low.png
 
 # Conclusion
 
-The AR Digital Electronics Laboratory successfully demonstrates the implementation of Boolean functions using SOP and POS forms within an immersive learning environment. By combining Unity, AR Foundation, and digital logic simulation, the project provides an engaging alternative to conventional electronics laboratories. Students can safely practice circuit construction, validate logical expressions, and gain hands-on experience through interactive visualization, making digital electronics education more accessible and effective.
+The AR Digital Electronics Laboratory implements Boolean functions in SOP and POS form using
+standard TTL ICs, with the circuit behaviour derived from a real netlist rather than a lookup
+table. Scene assembly, geometry and UI are all generated from code, so the project is
+reproducible from a fresh clone with no binary assets to source or import. AR placement,
+plane detection and the full experiment flow are complete in code, but ARCore tracking and
+in-app behaviour have not yet been validated on physical hardware.
 
 ---
 

@@ -1,0 +1,26 @@
+{
+    "name": "ARLab.Runtime",
+    "rootNamespace": "ARLab",
+    "references": [
+        "Unity.XR.ARFoundation",
+        "Unity.XR.ARSubsystems",
+        "Unity.XR.ARCore",
+        "Unity.XR.ARKit",
+        "Unity.XR.CoreUtils",
+        "Unity.XR.Management",
+        "Unity.InputSystem",
+        "Unity.InputSystem.UI",
+        "Unity.RenderPipelines.Universal.Runtime",
+        "Unity.RenderPipelines.Core.Runtime",
+        "UnityEngine.UI"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -202,6 +202,19 @@ namespace ARLab.EditorTools
             PlayerSettings.Android.blitType = AndroidBlitType.Never;
             PlayerSettings.SetMobileMTRendering(NamedBuildTarget.Android, true);
 
+            // The ARCore AARs - including Google's own com.google.ar.core client - do not
+            // declare the camera permission, so the app supplies it through an .androidlib
+            // module, which Gradle merges without needing a Player Settings toggle. Warn if it
+            // is missing, because the failure mode is a black camera on a real device with no
+            // error anywhere in the editor.
+            const string arManifest = "Assets/Plugins/Android/ARPermissions.androidlib/AndroidManifest.xml";
+            if (!File.Exists(arManifest))
+            {
+                Debug.LogWarning(
+                    $"[LabSceneBuilder] {arManifest} is missing; the APK would ship without the " +
+                    "CAMERA permission and AR would not start on a real device.");
+            }
+
             AssetDatabase.SaveAssets();
             Debug.Log("[LabSceneBuilder] Android player settings applied (ARM64, IL2CPP, API 25+).");
         }

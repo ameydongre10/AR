@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
@@ -158,6 +159,101 @@ namespace ARLab.Tests.EditMode
             {
                 Assert.IsNotNull(b.targetGraphic, "A Button without a graphic is invisible and unclickable.");
                 Assert.IsNotEmpty(b.GetComponentInChildren<Text>().text, "Buttons must be labelled.");
+            }
+        }
+
+        /// <summary>
+        /// Row templates are stored inactive, and Instantiate copies that state, so a plain
+        /// Instantiate yields rows that exist in the hierarchy but never render. This asserts
+        /// the rows are genuinely active, not merely present.
+        /// </summary>
+        [Test]
+        public void LibraryRowsAreActiveAndVisible()
+        {
+            var gm = BuildGraph();
+            var hud = _root.GetComponentInChildren<ARLab.UI.LabHud>(true);
+
+            // One row per catalog entry, plus one header per distinct category.
+            var categories = new HashSet<string>();
+            foreach (var e in ARLab.Laboratory.LaboratoryManager.Catalog) categories.Add(e.Category);
+            int expected = ARLab.Laboratory.LaboratoryManager.Catalog.Length + categories.Count;
+
+            Assert.AreEqual(expected, hud.VisibleLibraryRowCount,
+                "Every catalog entry and category header must be an active, rendered row.");
+        }
+
+        [Test]
+        public void LibraryRowTextIsPopulated()
+        {
+            var gm = BuildGraph();
+            var texts = _root.GetComponentsInChildren<UnityEngine.UI.Text>(true)
+                .Where(t => t.gameObject.activeInHierarchy && !string.IsNullOrEmpty(t.text))
+                .Select(t => t.text)
+                .ToList();
+
+            Assert.GreaterOrEqual(texts.Count, ARLab.Laboratory.LaboratoryManager.Catalog.Length,
+                "Active library rows must carry visible label text.");
+        }
+
+        [Test]
+        public void ValidationRowsAreActiveAndVisible()
+        {
+            var gm = BuildGraph();
+            var hud = _root.GetComponentInChildren<ARLab.UI.LabHud>(true);
+
+            // Evaluating an unbuilt lab produces a report with checks; each must become a
+            // visible row rather than an inactive one.
+            gm.OnEvaluate();
+
+            Assert.Greater(hud.VisibleValidationRowCount, 0,
+                "Validation checks must be rendered as active rows, not hidden templates.");
+        }
+
+        [Test]
+        public void RebuildingTheLibraryDoesNotDuplicateRows()
+        {
+            var gm = BuildGraph();
+            var hud = _root.GetComponentInChildren<ARLab.UI.LabHud>(true);
+            int first = hud.VisibleLibraryRowCount;
+
+            // Opening the library again re-runs the build; it must be idempotent.
+            hud.OnToggleLibrary();
+            hud.OnToggleLibrary();
+
+            Assert.AreEqual(first, hud.VisibleLibraryRowCount, "Rebuilding must not duplicate rows.");
+        }
+
+        /// <summary>
+        /// The action bar holds nine buttons. If they are laid out on a grid wider than nine
+        /// columns they crowd into the left of the panel and leave the right-hand side dead.
+        /// </summary>
+        [Test]
+        public void ActionBarFillsItsPanelWidth()
+        {
+            var gm = BuildGraph();
+            var hud = _root.GetComponentInChildren<ARLab.UI.LabHud>(true);
+
+            // Scope to the action bar itself: other rows (inspector, tutorial, validation) are
+            // separate panels with their own column counts and would skew the measurements.
+            var barRow = _root.GetComponentsInChildren<Transform>(true)
+                .First(t => t.name == "ActionBar");
+            var bar = barRow.GetComponentsInChildren<Button>(true).ToList();
+            Assert.GreaterOrEqual(bar.Count, 9, "The action bar should expose every command.");
+
+            // The rightmost button must reach the right edge of the bar, and the leftmost must
+            // start at the left edge.
+            float minX = bar.Min(b => ((RectTransform)b.transform).anchorMin.x);
+            float maxX = bar.Max(b => ((RectTransform)b.transform).anchorMax.x);
+            Assert.Less(minX, 0.02f, "Buttons must start at the left edge of the bar.");
+            Assert.Greater(maxX, 0.98f, "Buttons must extend to the right edge of the bar.");
+
+            // No two buttons may overlap, otherwise labels collide and taps hit the wrong one.
+            var sorted = bar.Select(b => (RectTransform)b.transform)
+                            .OrderBy(r => r.anchorMin.x).ToList();
+            for (int i = 1; i < sorted.Count; i++)
+            {
+                Assert.GreaterOrEqual(sorted[i].anchorMin.x, sorted[i - 1].anchorMax.x - 0.001f,
+                    $"Buttons '{sorted[i - 1].name}' and '{sorted[i].name}' overlap.");
             }
         }
 

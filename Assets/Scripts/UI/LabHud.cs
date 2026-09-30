@@ -280,7 +280,7 @@ namespace ARLab.UI
             Place(inspectorBody.rectTransform, new Vector2(0f, 0f), new Vector2(1f, 1f),
                 new Vector2(24f, 150f), new Vector2(-24f, -186f));
 
-            var inspectorActions = MakePanel(inspectorRt, "Actions",
+            var inspectorActions = MakePanel(inspectorRt, "InspectorActions",
                 new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(24f, 16f), new Vector2(-24f, 140f),
                 new Color(0f, 0f, 0f, 0f));
             toggleButton = MakeButton(inspectorActions, "Toggle", "Toggle switch", 0f, 0.5f, 30,
@@ -290,17 +290,18 @@ namespace ARLab.UI
             inspectorPanel.SetActive(false);
 
             // ---- action bar
-            RectTransform actions = MakePanel(root, "Actions", new Vector2(0f, 0f), new Vector2(1f, 0f),
+            RectTransform actions = MakePanel(root, "ActionBar", new Vector2(0f, 0f), new Vector2(1f, 0f),
                 new Vector2(24f, 24f), new Vector2(-24f, 220f), PanelBg);
-            MakeButton(actions, "Library", "Library", 0f, 0.25f, 32, OnToggleLibraryAction);
-            MakeButton(actions, "Place", "Place", 0.25f, 0.5f, 32, OnPlace);
-            MakeButton(actions, "Power", "Power", 0.5f, 0.75f, 32, () => { if (_gameManager != null) _gameManager.OnTogglePower(); });
-            MakeButton(actions, "Cancel", "Cancel wire", 0.75f, 1f, 32, () => { if (_gameManager != null) _gameManager.OnCancelWire(); });
-            MakeButton(actions, "Evaluate", "Evaluate", 1f, 1.25f, 32, () => { if (_gameManager != null) _gameManager.OnEvaluate(); });
-            MakeButton(actions, "TruthTable", "Truth table", 1.25f, 1.5f, 32, OnToggleTruthTable);
-            MakeButton(actions, "Reset", "Reset", 1.5f, 1.75f, 32, () => { if (_gameManager != null) _gameManager.OnReset(); });
-            MakeButton(actions, "Inspector", "Inspector", 1.75f, 2f, 32, OnToggleInspector);
-            MakeButton(actions, "Help", "Help", 2f, 2.25f, 32, OnToggleTutorial);
+            // Nine actions, each spanning one ninth of the bar so the row fills its width.
+            MakeButton(actions, "Library", "Library", 0f / 9f, 1f / 9f, 32, OnToggleLibraryAction);
+            MakeButton(actions, "Place", "Place", 1f / 9f, 2f / 9f, 32, OnPlace);
+            MakeButton(actions, "Power", "Power", 2f / 9f, 3f / 9f, 32, () => { if (_gameManager != null) _gameManager.OnTogglePower(); });
+            MakeButton(actions, "Cancel", "Cancel wire", 3f / 9f, 4f / 9f, 32, () => { if (_gameManager != null) _gameManager.OnCancelWire(); });
+            MakeButton(actions, "Evaluate", "Evaluate", 4f / 9f, 5f / 9f, 32, () => { if (_gameManager != null) _gameManager.OnEvaluate(); });
+            MakeButton(actions, "TruthTable", "Truth table", 5f / 9f, 6f / 9f, 32, OnToggleTruthTable);
+            MakeButton(actions, "Reset", "Reset", 6f / 9f, 7f / 9f, 32, () => { if (_gameManager != null) _gameManager.OnReset(); });
+            MakeButton(actions, "Inspector", "Inspector", 7f / 9f, 8f / 9f, 32, OnToggleInspector);
+            MakeButton(actions, "Help", "Help", 8f / 9f, 9f / 9f, 32, OnToggleTutorial);
 
             // ---- tutorial
             var tutorialRt = MakePanel(root, "Tutorial", new Vector2(0.06f, 0f), new Vector2(0.94f, 0f),
@@ -368,6 +369,23 @@ namespace ARLab.UI
 
         /// <summary>True once the procedural panel set exists, for tooling and tests.</summary>
         public bool BuiltUi => _uiBuilt;
+
+        /// <summary>
+        /// Counts only *active* children, because a row that exists in the hierarchy but is
+        /// inactive is not rendered and is therefore still missing from the UI.
+        /// </summary>
+        public int VisibleLibraryRowCount => CountActiveChildren(libraryList);
+
+        public int VisibleValidationRowCount => CountActiveChildren(validationList);
+
+        private static int CountActiveChildren(Transform parent)
+        {
+            if (parent == null) return 0;
+            int n = 0;
+            for (int i = 0; i < parent.childCount; i++)
+                if (parent.GetChild(i).gameObject.activeSelf) n++;
+            return n;
+        }
 
         /// <summary>
         /// Marks a hidden row template. Templates carry a Button component so the instantiated
@@ -444,15 +462,16 @@ namespace ARLab.UI
             t.raycastTarget = false;
         }
 
-        private static Button MakeButton(Transform parent, string name, string label, float slotStart, float slotEnd,
+        private static Button MakeButton(Transform parent, string name, string label, float xMin, float xMax,
             int size, UnityEngine.Events.UnityAction onClick)
         {
-            // Slot indices are absolute across a fixed 4-slot grid, so the caller picks columns
-            // and adding an action never means recomputing the layout by hand.
-            const int slots = 4;
+            // xMin/xMax are normalised across the row's own width, so each row decides its own
+            // column count and a button always spans the fraction it asks for. An earlier
+            // version divided by a single global column count, which left every row filling
+            // only part of its panel and stranded the right-hand side.
             const float pad = 10f;
             var bg = MakePanel(parent, name, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, ButtonBg);
-            Place(bg, new Vector2(slotStart / slots, 0f), new Vector2(slotEnd / slots, 1f),
+            Place(bg, new Vector2(xMin, 0f), new Vector2(xMax, 1f),
                 new Vector2(pad, 0f), new Vector2(-pad, 0f));
 
             var button = bg.gameObject.AddComponent<Button>();
@@ -628,7 +647,7 @@ namespace ARLab.UI
         /// </summary>
         private void BuildValidationRow(ValidationCheck check)
         {
-            var go = Instantiate(validationRowPrefab, validationList);
+            var go = InstantiateActive(validationRowPrefab, validationList);
             var labels = go.GetComponentsInChildren<Text>(true);
             if (labels.Length > 0)
             {
@@ -665,7 +684,7 @@ namespace ARLab.UI
                     category = entry.Category;
                     if (libraryCategoryPrefab != null)
                     {
-                        var header = Instantiate(libraryCategoryPrefab, libraryList);
+                        var header = InstantiateActive(libraryCategoryPrefab, libraryList);
                         var t = header.GetComponentInChildren<Text>();
                         if (t != null) t.text = category.ToUpperInvariant();
                     }
@@ -676,7 +695,7 @@ namespace ARLab.UI
 
         private void BuildLibraryButton(CatalogEntry entry)
         {
-            var go = Instantiate(libraryButtonPrefab, libraryList);
+            var go = InstantiateActive(libraryButtonPrefab, libraryList);
             var button = go.GetComponent<Button>();
             if (button == null) button = go.AddComponent<Button>();
 
@@ -694,6 +713,18 @@ namespace ARLab.UI
         }
 
         // ------------------------------------------------------------------ helpers
+
+        /// <summary>
+        /// Instantiates a row template and activates the clone. Row templates are kept inactive
+        /// so they never render, and Instantiate copies that inactive state, so a plain
+        /// Instantiate would produce a row that is present in the hierarchy but invisible.
+        /// </summary>
+        private static GameObject InstantiateActive(GameObject template, Transform parent)
+        {
+            GameObject go = Instantiate(template, parent);
+            go.SetActive(true);
+            return go;
+        }
 
         private static Color ColorFor(NotificationSeverity s)
         {

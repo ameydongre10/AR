@@ -176,7 +176,28 @@ Unity -batchmode -nographics -projectPath . \
   -testResults results.xml -logFile run.log
 ```
 
-Current state: **95 EditMode tests, all passing.**
+Current state: **106 EditMode tests, all passing.**
+
+## Android camera permission
+
+An AR app cannot open the camera without the `CAMERA` permission, and none of the ARCore
+AARs declare it — not Unity's `UnityARCore.aar`, and not Google's own `com.google.ar.core`
+client AAR. Gradle's manifest merger therefore leaves the APK without it, and AR silently
+fails on a real device with nothing wrong visible in the editor.
+
+The project supplies it from
+`Assets/Plugins/Android/ARPermissions.androidlib/AndroidManifest.xml`, which declares:
+
+| Entry | Value | Why |
+| --- | --- | --- |
+| `uses-permission` | `android.permission.CAMERA` | ARCore drives the camera directly |
+| `uses-feature` | `android.hardware.camera.ar` (required) | The app cannot run without AR hardware |
+| `meta-data` | `com.google.ar.core` = `required` | Fails loudly on unsupported devices instead of a silent non-AR fallback |
+
+It is an `.androidlib` module rather than Player Settings → Custom Main Manifest on purpose:
+Unity 6 removed the scripting API for that toggle, so a main-manifest approach would require
+a manual click after every clone. A library module's manifest is merged automatically and
+`AndroidManifestTests` asserts all three entries are present.
 
 ---
 
@@ -505,6 +526,26 @@ table. Scene assembly, geometry and UI are all generated from code, so the proje
 reproducible from a fresh clone with no binary assets to source or import. AR placement,
 plane detection and the full experiment flow are complete in code, but ARCore tracking and
 in-app behaviour have not yet been validated on physical hardware.
+
+## What is and is not verified
+
+Verified here, by the 106 EditMode tests:
+
+- the netlist solver, gate and IC behaviour, truth-table generation, and validation output;
+- scene assembly from an empty scene, and that the generated scene stores only the
+  `GameManager` entry point;
+- that library, category, and validation rows are actually **active** and render, not merely
+  present in the hierarchy;
+- that the action bar fills its panel width with no overlapping buttons;
+- the AR permission manifest entries.
+
+Not verified, and stated plainly rather than implied:
+
+- ARCore plane tracking, gestures, and placement on a physical device;
+- the Gradle merge of the `.androidlib` manifest into a real APK;
+- an installed build. No Android SDK/NDK or `adb` was available, so no APK was produced.
+
+The editor path and the simulated no-AR path are covered by tests; device behaviour is not.
 
 ---
 

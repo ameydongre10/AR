@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AR permissions for the digital electronics lab.
+
+  None of the ARCore AARs declare the camera permission: not Unity's UnityARCore.aar, and
+  not Google's com.google.ar.core client AAR either. Gradle's manifest merger therefore
+  leaves the built APK without it, and an AR session cannot open the camera on a real
+  device. Declaring it here is what makes AR work at runtime.
+
+  This lives in a .androidlib module because Unity merges a library module's manifest into
+  the build automatically. The alternative, Player Settings > Custom Main Manifest, can only
+  be toggled through the editor UI in Unity 6 - the scripting API for it was removed - so
+  relying on it would make a fresh clone fail to build correctly without a manual step.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.arlab.digitalelectronics.arpermissions">
+
+    <!-- ARCore drives the camera directly, so the app must hold the permission. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!--
+      Required, not optional: this is an AR application and cannot run without AR hardware.
+      Keeping it required also stops Google Play offering the build to devices that cannot
+      run it.
+    -->
+    <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
+
+    <application>
+        <!--
+          "required" makes the ARCore SDK abort on unsupported devices instead of silently
+          falling back to a non-AR session, which would leave the student looking at a flat
+          lab with no tracking and no error.
+        -->
+        <meta-data android:name="com.google.ar.core" android:value="required" />
+    </application>
+</manifest>
